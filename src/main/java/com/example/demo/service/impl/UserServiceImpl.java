@@ -1,5 +1,6 @@
 package com.example.demo.service.impl;
 
+import com.example.demo.constant.RedisConstant;
 import com.example.demo.util.JwtUtil;
 import com.example.demo.entity.User;
 import com.example.demo.repository.UserRepository;
@@ -10,9 +11,10 @@ import com.example.demo.exception.BusinessException;
 import com.example.demo.service.UserService;
 import com.example.demo.vo.UserVO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-
+import java.util.concurrent.TimeUnit;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -24,7 +26,9 @@ public class UserServiceImpl implements UserService {
     private JwtUtil jwtUtil;
     @Autowired
     private BCryptPasswordEncoder encoder;
-//登录
+    @Autowired
+    private RedisTemplate<String,Object> redisTemplate;
+//注册
     @Override
     public String register(RegisterDTO registerDTO) {
         // 检查用户名是否已存在
@@ -36,10 +40,11 @@ public class UserServiceImpl implements UserService {
         user.setPassword(encoder.encode(registerDTO.getPassword()));
         user.setCreateTime(LocalDateTime.now());
         userRepository.save(user);
+        redisTemplate.delete(RedisConstant.USER_LIST);
         return "注册成功";
     }
 
-//注册
+//登录
     @Override
     public String login(LoginDTO loginDTO) {
         User dbUser = userRepository.findByUsername(loginDTO.getUsername());
@@ -55,9 +60,24 @@ public class UserServiceImpl implements UserService {
     //查询
     @Override
     public List<UserVO> list() {
+        //查询redis
+        String key = RedisConstant.USER_LIST;
+
+        List<UserVO> cacheUsers =
+                (List<UserVO>) redisTemplate.opsForValue().get(key);
+
+        // 2. Redis有数据，直接返回
+        if (cacheUsers != null) {
+            System.out.println("Redis查询");
+            return cacheUsers;
+        }
+
+        // 3. Redis没有，查询数据库
+        System.out.println("MySQL查询");
         List<User> users = userRepository.findAll();
 
-        return users.stream()
+        //4.user转换userVO
+        List<UserVO> userVOList = users.stream()
                 .map(user -> {
 
                     UserVO vo = new UserVO();
@@ -72,6 +92,18 @@ public class UserServiceImpl implements UserService {
 
                 })
                 .toList();
+
+        //5.放入Redis，设置过期时间
+        redisTemplate.opsForValue()
+                .set(
+                        key,
+                        userVOList,
+                        30,
+                        TimeUnit.MINUTES
+                );
+
+
+        return userVOList;
         }
     //修改
     @Override
@@ -82,6 +114,8 @@ public class UserServiceImpl implements UserService {
         }
         existing.setPassword(encoder.encode(updateDTO.getPassword()));
         userRepository.save(existing);
+        //删除reids缓存
+        redisTemplate.delete(RedisConstant.USER_LIST);
         return "修改成功";
     }
 }
