@@ -178,9 +178,10 @@ POST /user/login
 **请求**
 
 ```
+http
 GET /user/list
-```http
 Authorization: Bearer <JWT_TOKEN>
+```
 
 **功能**
 
@@ -195,10 +196,10 @@ Authorization: Bearer <JWT_TOKEN>
 **请求**
 
 ```
+http
 PUT /user/update
-```http
 Authorization: Bearer <JWT_TOKEN>
-
+```
 **请求参数**
 
 ```json
